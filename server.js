@@ -1,19 +1,16 @@
 const WebSocket = require("ws");
 
-const PORT = 3000;
-const wss = new WebSocket.Server({ port: PORT });
+const PORT = process.env.PORT || 3000;
 
-console.log("WebSocket server started on port", PORT);
+const wss = new WebSocket.Server({ port: PORT });
 
 wss.on("connection", ws => {
   console.log("client connected");
 
   ws.on("message", msg => {
     console.log("received:", msg.toString());
-    ws.send(JSON.stringify({ type: "pong" }));
-  });
-
-  ws.on("close", () => {
-    console.log("client disconnected");
+    ws.send("pong");
   });
 });
+
+console.log("WebSocket server started on port " + PORT);
