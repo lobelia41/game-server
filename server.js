@@ -1,8 +1,16 @@
+const http = require("http");
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 3000;
 
-const wss = new WebSocket.Server({ port: PORT });
+// HTTPサーバー（Railwayが必須とする）
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end("OK");
+});
+
+// WebSocket を HTTP サーバーに紐づける
+const wss = new WebSocket.Server({ server });
 
 wss.on("connection", ws => {
   console.log("client connected");
@@ -13,4 +21,6 @@ wss.on("connection", ws => {
   });
 });
 
-console.log("WebSocket server started on port " + PORT);
+server.listen(PORT, () => {
+  console.log("Server listening on port " + PORT);
+});
