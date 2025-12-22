@@ -37,34 +37,34 @@ wss.on("connection", ws => {
     const data = JSON.parse(msg.toString());
 
     // ===== ルーム作成 or 参加 =====
-    if (data.type === "join") {
-      const { roomId, role } = data;
+  if (data.type === "join") {
+    const roomId = data.roomId;
 
-      if (!rooms[roomId]) {
-        rooms[roomId] = {
-          maxPlayers: 4,
-          players: [],
-          spectators: [],
-          phase: "waiting"
-        };
-      }
-
-      const room = rooms[roomId];
-      ws.roomId = roomId;
-
-      if (role === "player" && room.players.length < room.maxPlayers) {
-        room.players.push({
-          id: ws.id,
-          ws,
-          ready: false,
-          isHost: room.players.length === 0
-        });
-      } else {
-        room.spectators.push({ id: ws.id, ws });
-      }
-
-      broadcast(room, roomInfo(room));
+    if (!rooms[roomId]) {
+      rooms[roomId] = {
+        maxPlayers: 4,
+        players: [],
+        spectators: [],
+        phase: "waiting"
+      };
     }
+
+  const room = rooms[roomId];
+  ws.roomId = roomId;
+
+  if (room.players.length < room.maxPlayers && room.phase === "waiting") {
+    room.players.push({
+      id: ws.id,
+      ws,
+      ready: false,
+      isHost: room.players.length === 0
+    });
+  } else {
+    room.spectators.push({ id: ws.id, ws });
+  }
+
+    broadcast(room, roomInfo(room));
+  }
 
     // ===== 準備完了 =====
     if (data.type === "ready") {
