@@ -1,147 +1,134 @@
 const WebSocket = require("ws");
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
 const wss = new WebSocket.Server({ port: PORT });
 
-const MAX_PLAYERS = 4;
-const rooms = {};
+const rooms = {}; // roomId -> room
+
+function send(ws, obj) {
+  ws.send(JSON.stringify(obj));
+}
 
 function broadcast(room, obj) {
-  const msg = JSON.stringify(obj);
-  room.players.forEach(ws => {
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(msg);
-    }
+  [...room.players, ...room.spectators].forEach(c => {
+    send(c.ws, obj);
   });
 }
 
+function roomInfo(room) {
+  return {
+    type: "roomInfo",
+    players: room.players.map(p => ({
+      id: p.id,
+      ready: p.ready,
+      isHost: p.isHost
+    })),
+    spectators: room.spectators.map(s => s.id),
+    phase: room.phase,
+    maxPlayers: room.maxPlayers
+  };
+}
+
 wss.on("connection", ws => {
+  ws.id = Math.random().toString(36).slice(2);
+  ws.roomId = null;
+
   ws.on("message", msg => {
     const data = JSON.parse(msg.toString());
 
-    /* ===== ルーム作成 ===== */
-    if (data.type === "create") {
-      const key = data.roomKey;
-
-      if (rooms[key]) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "room already exists"
-        }));
-        return;
-      }
-
-      rooms[key] = {
-        host: ws,
-        players: [ws],
-        readySet: new Set(),
-        confirmSet: new Set(),
-        phase: "LOBBY"
-      };
-
-      ws.roomKey = key;
-      ws.isHost = true;
-
-      ws.send(JSON.stringify({
-        type: "created",
-        playerCount: 1,
-        isHost: true
-      }));
-
-      return;
-    }
-
-    /* ===== ルーム参加 ===== */
+    // ===== ルーム作成 or 参加 =====
     if (data.type === "join") {
-      const key = data.roomKey;
-      const room = rooms[key];
+      const { roomId, role } = data;
 
-      if (!room) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "room not found"
-        }));
-        return;
+      if (!rooms[roomId]) {
+        rooms[roomId] = {
+          maxPlayers: 4,
+          players: [],
+          spectators: [],
+          phase: "waiting"
+        };
       }
 
-      if (room.players.length >= MAX_PLAYERS) {
-        ws.send(JSON.stringify({
-          type: "error",
-          message: "room full"
-        }));
-        return;
+      const room = rooms[roomId];
+      ws.roomId = roomId;
+
+      if (role === "player" && room.players.length < room.maxPlayers) {
+        room.players.push({
+          id: ws.id,
+          ws,
+          ready: false,
+          isHost: room.players.length === 0
+        });
+      } else {
+        room.spectators.push({ id: ws.id, ws });
       }
 
-      room.players.push(ws);
-      ws.roomKey = key;
-      ws.isHost = false;
-
-      broadcast(room, {
-        type: "joined",
-        playerCount: room.players.length
-      });
-
-      return;
+      broadcast(room, roomInfo(room));
     }
 
-    const room = rooms[ws.roomKey];
-    if (!room) return;
+    // ===== 準備完了 =====
+    if (data.type === "ready") {
+      const room = rooms[ws.roomId];
+      if (!room) return;
 
-    /* ===== 準備OK ===== */
-    if (data.type === "ready" && room.phase === "LOBBY") {
-      room.readySet.add(ws);
-
-      broadcast(room, {
-        type: "ready_update",
-        readyCount: room.readySet.size,
-        playerCount: room.players.length
-      });
-
-      if (room.readySet.size === room.players.length && room.players.length >= 2) {
-        room.phase = "CONFIRM";
-        room.confirmSet.clear();
-        broadcast(room, { type: "confirm_request" });
+      const player = room.players.find(p => p.id === ws.id);
+      if (player) {
+        player.ready = true;
+        broadcast(room, roomInfo(room));
       }
     }
 
-    /* ===== 開始確認 ===== */
-    if (data.type === "confirm" && room.phase === "CONFIRM") {
-      room.confirmSet.add(ws);
+    // ===== ゲーム開始（ホストのみ）=====
+    if (data.type === "start") {
+      const room = rooms[ws.roomId];
+      if (!room) return;
 
-      broadcast(room, {
-        type: "confirm_update",
-        confirmCount: room.confirmSet.size,
-        playerCount: room.players.length
-      });
+      const player = room.players.find(p => p.id === ws.id);
+      if (!player || !player.isHost) return;
 
-      if (room.confirmSet.size === room.players.length) {
-        room.phase = "PLAYING";
-        broadcast(room, { type: "start" });
+      if (room.players.length >= 2 &&
+          room.players.every(p => p.ready || p.isHost)) {
+        room.phase = "playing";
+        broadcast(room, { type: "gameStart" });
       }
+    }
+
+    // ===== 役割変更 =====
+    if (data.type === "changeRole") {
+      const room = rooms[ws.roomId];
+      if (!room || room.phase !== "waiting") return;
+
+      room.players = room.players.filter(p => p.id !== ws.id);
+      room.spectators = room.spectators.filter(s => s.id !== ws.id);
+
+      if (data.to === "player" && room.players.length < room.maxPlayers) {
+        room.players.push({
+          id: ws.id,
+          ws,
+          ready: false,
+          isHost: false
+        });
+      } else {
+        room.spectators.push({ id: ws.id, ws });
+      }
+
+      broadcast(room, roomInfo(room));
     }
   });
 
   ws.on("close", () => {
-    const room = rooms[ws.roomKey];
+    const room = rooms[ws.roomId];
     if (!room) return;
 
-    room.players = room.players.filter(p => p !== ws);
-    room.readySet.delete(ws);
-    room.confirmSet.delete(ws);
-    room.phase = "LOBBY";
+    room.players = room.players.filter(p => p.id !== ws.id);
+    room.spectators = room.spectators.filter(s => s.id !== ws.id);
 
-    // ホストが抜けたら解散（簡易）
-    if (ws.isHost || room.players.length === 0) {
-      broadcast(room, { type: "error", message: "room closed" });
-      delete rooms[ws.roomKey];
-      return;
+    if (room.players.length === 0 && room.spectators.length === 0) {
+      delete rooms[ws.roomId];
+    } else {
+      broadcast(room, roomInfo(room));
     }
-
-    broadcast(room, {
-      type: "left",
-      playerCount: room.players.length
-    });
   });
 });
 
-console.log("Room create/join server started");
+console.log("WebSocket server started on port " + PORT);
