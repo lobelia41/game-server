@@ -6,7 +6,9 @@ const wss = new WebSocket.Server({ port: PORT });
 const rooms = {}; // roomId -> room
 
 function send(ws, obj) {
-  ws.send(JSON.stringify(obj));
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
 }
 
 function broadcast(room, obj) {
@@ -29,42 +31,67 @@ function roomInfo(room) {
   };
 }
 
+function ensureHost(room) {
+  if (!room.players.some(p => p.isHost) && room.players.length > 0) {
+    room.players[0].isHost = true;
+  }
+}
+
 wss.on("connection", ws => {
-  ws.id = Math.random().toString(36).slice(2);
+  ws.id = null;
   ws.roomId = null;
 
   ws.on("message", msg => {
-    const data = JSON.parse(msg.toString());
-
-    // ===== ルーム作成 or 参加 =====
-  if (data.type === "join") {
-    const roomId = data.roomId;
-
-    if (!rooms[roomId]) {
-      rooms[roomId] = {
-        maxPlayers: 4,
-        players: [],
-        spectators: [],
-        phase: "waiting"
-      };
+    let data;
+    try {
+      data = JSON.parse(msg.toString());
+    } catch {
+      return;
     }
 
-  const room = rooms[roomId];
-  ws.roomId = roomId;
+    // ===== ルーム作成 or 参加 =====
+    if (data.type === "join") {
+      const roomId = data.roomId;
+      const clientId = data.id;
 
-  if (room.players.length < room.maxPlayers && room.phase === "waiting") {
-    room.players.push({
-      id: ws.id,
-      ws,
-      ready: false,
-      isHost: room.players.length === 0
-    });
-  } else {
-    room.spectators.push({ id: ws.id, ws });
-  }
+      if (!roomId || !clientId) return;
 
-    broadcast(room, roomInfo(room));
-  }
+      if (!rooms[roomId]) {
+        rooms[roomId] = {
+          maxPlayers: 4,
+          players: [],
+          spectators: [],
+          phase: "waiting"
+        };
+      }
+
+      const room = rooms[roomId];
+
+      // 二重 join 防止
+      if (
+        room.players.some(p => p.id === clientId) ||
+        room.spectators.some(s => s.id === clientId)
+      ) {
+        return;
+      }
+
+      ws.id = clientId;
+      ws.roomId = roomId;
+
+      if (room.players.length < room.maxPlayers && room.phase === "waiting") {
+        room.players.push({
+          id: ws.id,
+          ws,
+          ready: false,
+          isHost: room.players.length === 0
+        });
+      } else {
+        room.spectators.push({ id: ws.id, ws });
+      }
+
+      ensureHost(room);
+      broadcast(room, roomInfo(room));
+    }
 
     // ===== 準備完了 =====
     if (data.type === "ready") {
@@ -86,8 +113,10 @@ wss.on("connection", ws => {
       const player = room.players.find(p => p.id === ws.id);
       if (!player || !player.isHost) return;
 
-      if (room.players.length >= 2 &&
-          room.players.every(p => p.ready || p.isHost)) {
+      if (
+        room.players.length >= 2 &&
+        room.players.every(p => p.ready || p.isHost)
+      ) {
         room.phase = "playing";
         broadcast(room, { type: "gameStart" });
       }
@@ -112,6 +141,7 @@ wss.on("connection", ws => {
         room.spectators.push({ id: ws.id, ws });
       }
 
+      ensureHost(room);
       broadcast(room, roomInfo(room));
     }
   });
@@ -125,9 +155,11 @@ wss.on("connection", ws => {
 
     if (room.players.length === 0 && room.spectators.length === 0) {
       delete rooms[ws.roomId];
-    } else {
-      broadcast(room, roomInfo(room));
+      return;
     }
+
+    ensureHost(room);
+    broadcast(room, roomInfo(room));
   });
 });
 
