@@ -50,48 +50,50 @@ wss.on("connection", ws => {
     }
 
     // ===== ルーム作成 or 参加 =====
-    if (data.type === "join") {
-      const roomId = data.roomId;
-      const clientId = data.id;
+if (data.type === "join") {
+  const roomId = data.roomId;
+  const clientId = data.id;
+  const isHost = data.isHost === true;
 
-      if (!roomId || !clientId) return;
+  // roomId が存在しない & ホストじゃない → 失敗
+  if (!rooms[roomId] && !isHost) {
+    send(ws, {
+      type: "joinResult",
+      success: false,
+      reason: "room_not_found"
+    });
+    return;
+  }
 
-      if (!rooms[roomId]) {
-        rooms[roomId] = {
-          maxPlayers: 4,
-          players: [],
-          spectators: [],
-          phase: "waiting"
-        };
-      }
+  // ホストならルーム作成OK
+  if (!rooms[roomId]) {
+    rooms[roomId] = {
+      maxPlayers: 4,
+      players: [],
+      spectators: [],
+      phase: "waiting"
+    };
+  }
 
-      const room = rooms[roomId];
+  const room = rooms[roomId];
+  ws.id = clientId;
+  ws.roomId = roomId;
 
-      // 二重 join 防止
-      if (
-        room.players.some(p => p.id === clientId) ||
-        room.spectators.some(s => s.id === clientId)
-      ) {
-        return;
-      }
+  room.players.push({
+    id: ws.id,
+    ws,
+    ready: false,
+    isHost: room.players.length === 0
+  });
 
-      ws.id = clientId;
-      ws.roomId = roomId;
+  // ★ 成功を返す
+  send(ws, {
+    type: "joinResult",
+    success: true
+  });
 
-      if (room.players.length < room.maxPlayers && room.phase === "waiting") {
-        room.players.push({
-          id: ws.id,
-          ws,
-          ready: false,
-          isHost: room.players.length === 0
-        });
-      } else {
-        room.spectators.push({ id: ws.id, ws });
-      }
-
-      ensureHost(room);
-      broadcast(room, roomInfo(room));
-    }
+  broadcast(room, roomInfo(room));
+}
 
     // ===== 準備完了 =====
     if (data.type === "ready") {
