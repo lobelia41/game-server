@@ -32,6 +32,7 @@ function roomInfo(room) {
 
     phase: room.phase,
     maxPlayers: room.maxPlayers
+    maxSpectators: room.maxSpectators, 
   };
 }
 
