@@ -26,6 +26,10 @@ function roomInfo(room) {
       isHost: p.isHost
     })),
     spectators: room.spectators.map(s => s.id),
+
+    playerCount: room.players.length,
+    spectatorCount: room.spectators.length,
+
     phase: room.phase,
     maxPlayers: room.maxPlayers
   };
