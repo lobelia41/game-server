@@ -22,17 +22,19 @@ function roomInfo(room) {
     type: "roomInfo",
     players: room.players.map(p => ({
       id: p.id,
+      name: p.name,
       ready: p.ready,
       isHost: p.isHost
     })),
-    spectators: room.spectators.map(s => s.id),
-
+    spectators: room.spectators.map(s => ({
+      id: s.id,
+      name: s.name
+    })),
     playerCount: room.players.length,
     spectatorCount: room.spectators.length,
-
     phase: room.phase,
     maxPlayers: room.maxPlayers,
-    maxSpectators: room.maxSpectators, 
+    maxSpectators: room.maxSpectators
   };
 }
 
@@ -91,6 +93,7 @@ if (data.type === "join") {
     // プレイヤーとして参加
     room.players.push({
       id: ws.id,
+      name: data.name || "NoName",
       ws,
       ready: false,
       isHost: room.players.length === 0
