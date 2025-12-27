@@ -31,10 +31,7 @@ function roomInfo(room) {
       name: s.name
     })),
     playerCount: room.players.length,
-    spectatorCount: room.spectators.length,
-    phase: room.phase,
-    maxPlayers: room.maxPlayers,
-    maxSpectators: room.maxSpectators
+    spectatorCount: room.spectators.length
   };
 }
 
@@ -111,6 +108,7 @@ if (data.type === "join") {
     // 観戦として参加
     room.spectators.push({
       id: ws.id,
+      name: data.name || "NoName",
       ws
     });
   }
