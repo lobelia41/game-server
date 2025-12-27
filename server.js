@@ -95,6 +95,15 @@ if (data.type === "join") {
       isHost: room.players.length === 0
     });
   } else {
+    // 満員処理
+   if (room.spectators.length >= room.maxSpectators) {
+    send(ws, {
+      type: "joinResult",
+      success: false,
+      reason: "spectator_full"
+    });
+    return;
+   }
     // 観戦として参加
     room.spectators.push({
       id: ws.id,
