@@ -73,7 +73,7 @@ if (data.type === "join") {
   if (!rooms[roomId]) {
     rooms[roomId] = {
       maxPlayers: 4,
-      maxSpectators: 8,
+      maxSpectators: 16,
       players: [],
       spectators: [],
       phase: "waiting"
