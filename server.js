@@ -59,7 +59,7 @@ if (data.type === "join") {
   const clientId = data.id;
   const isHost = data.isHost === true;
 
-  // 参加側で room が無い
+  // ルームが無い & ホストじゃない → 失敗
   if (!rooms[roomId] && !isHost) {
     send(ws, {
       type: "joinResult",
@@ -81,27 +81,27 @@ if (data.type === "join") {
 
   const room = rooms[roomId];
 
-  // ★満員チェック
-  if (room.players.length >= room.maxPlayers) {
-    send(ws, {
-      type: "joinResult",
-      success: false,
-      reason: "room_full"
-    });
-    return;
-  }
-
-  // ここまで来たら成功
   ws.id = clientId;
   ws.roomId = roomId;
 
-  room.players.push({
-    id: ws.id,
-    ws,
-    ready: false,
-    isHost: room.players.length === 0
-  });
+  // ===== プレイヤー or 観戦 判定 =====
+  if (room.players.length < room.maxPlayers && room.phase === "waiting") {
+    // プレイヤーとして参加
+    room.players.push({
+      id: ws.id,
+      ws,
+      ready: false,
+      isHost: room.players.length === 0
+    });
+  } else {
+    // 観戦として参加
+    room.spectators.push({
+      id: ws.id,
+      ws
+    });
+  }
 
+  // 成功通知（観戦でも success=true）
   send(ws, {
     type: "joinResult",
     success: true
