@@ -110,6 +110,16 @@ if (data.type === "join") {
   broadcast(room, roomInfo(room));
 }
 
+    if (msg.type === "leave") {
+  const room = findRoomByPlayerId(msg.id);
+  if (!room) return;
+
+  room.players = room.players.filter(p => p.id !== msg.id);
+  room.spectators = room.spectators.filter(s => s.id !== msg.id);
+
+  broadcastRoomInfo(room);
+}
+
     // ===== 準備完了 =====
     if (data.type === "ready") {
       const room = rooms[ws.roomId];
