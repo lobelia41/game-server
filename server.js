@@ -162,27 +162,33 @@ if (data.type === "join") {
     }
 
     // ===== 役割変更 =====
-    if (data.type === "changeRole") {
-      const room = rooms[ws.roomId];
-      if (!room || room.phase !== "waiting") return;
+if (data.type === "changeRole") {
+  const room = rooms[ws.roomId];
+  if (!room || room.phase !== "waiting") return;
 
-      room.players = room.players.filter(p => p.id !== ws.id);
-      room.spectators = room.spectators.filter(s => s.id !== ws.id);
+  // いったん両方から外す
+  room.players = room.players.filter(p => p.id !== ws.id);
+  room.spectators = room.spectators.filter(s => s.id !== ws.id);
 
-      if (data.to === "player" && room.players.length < room.maxPlayers) {
-        room.players.push({
-          id: ws.id,
-          ws,
-          ready: false,
-          isHost: false
-        });
-      } else {
-        room.spectators.push({ id: ws.id, ws });
-      }
-
-      ensureHost(room);
-      broadcast(room, roomInfo(room));
+  if (data.to === "player") {
+    if (room.players.length < room.maxPlayers) {
+      room.players.push({
+        id: ws.id,
+        ws,
+        ready: false,
+        isHost: false
+      });
+    } else {
+      // 満員なら観戦に戻す
+      room.spectators.push({ id: ws.id, ws });
     }
+  } else {
+    room.spectators.push({ id: ws.id, ws });
+  }
+
+  ensureHost(room);
+  broadcast(room, roomInfo(room));
+}
   });
 
   ws.on("close", () => {
