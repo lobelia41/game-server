@@ -31,7 +31,10 @@ function roomInfo(room) {
       name: s.name
     })),
     playerCount: room.players.length,
-    spectatorCount: room.spectators.length
+    spectatorCount: room.spectators.length,
+    maxPlayers: room.maxPlayers,
+    maxSpectators: room.maxSpectators,
+    phase: room.phase
   };
 }
 
@@ -122,14 +125,15 @@ if (data.type === "join") {
   broadcast(room, roomInfo(room));
 }
 
-    if (msg.type === "leave") {
-  const room = findRoomByPlayerId(msg.id);
+if (data.type === "leave") {
+  const room = rooms[ws.roomId];
   if (!room) return;
 
-  room.players = room.players.filter(p => p.id !== msg.id);
-  room.spectators = room.spectators.filter(s => s.id !== msg.id);
+  room.players = room.players.filter(p => p.id !== ws.id);
+  room.spectators = room.spectators.filter(s => s.id !== ws.id);
 
-  broadcastRoomInfo(room);
+  ensureHost(room);
+  broadcast(room, roomInfo(room));
 }
 
     // ===== 準備完了 =====
@@ -161,12 +165,28 @@ if (data.type === "join") {
       }
     }
 
+if (data.type === "requestRoomInfo") {
+  const room = rooms[ws.roomId];
+  if (!room) return;
+
+  send(ws, roomInfo(room));
+}
+    
     // ===== 役割変更 =====
 if (data.type === "changeRole") {
   const room = rooms[ws.roomId];
   if (!room || room.phase !== "waiting") return;
 
-  // いったん両方から外す
+  // 今の情報を取得
+  let user =
+    room.players.find(p => p.id === ws.id) ||
+    room.spectators.find(s => s.id === ws.id);
+
+  if (!user) return;
+
+  const name = user.name;
+
+  // 削除
   room.players = room.players.filter(p => p.id !== ws.id);
   room.spectators = room.spectators.filter(s => s.id !== ws.id);
 
@@ -174,16 +194,16 @@ if (data.type === "changeRole") {
     if (room.players.length < room.maxPlayers) {
       room.players.push({
         id: ws.id,
+        name,
         ws,
         ready: false,
         isHost: false
       });
     } else {
-      // 満員なら観戦に戻す
-      room.spectators.push({ id: ws.id, ws });
+      room.spectators.push({ id: ws.id, name, ws });
     }
   } else {
-    room.spectators.push({ id: ws.id, ws });
+    room.spectators.push({ id: ws.id, name, ws });
   }
 
   ensureHost(room);
