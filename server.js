@@ -143,7 +143,7 @@ if (data.type === "leave") {
 
       const player = room.players.find(p => p.id === ws.id);
       if (player) {
-        player.ready = msg.ready;
+        player.ready = data.ready;
         broadcast(room, roomInfo(room));
       }
     }
