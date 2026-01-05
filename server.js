@@ -103,7 +103,7 @@ if (data.type === "join") {
       maxSpectators: 1,
       players: [],
       spectators: [],
-      phase: "waiting"
+      phase: "waiting",
       selectedChars: {} 
     };
   }
