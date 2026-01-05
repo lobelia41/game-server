@@ -38,8 +38,21 @@ function roomInfo(room) {
   };
 }
 
+function checkRoomAlive(room) {
+  if (room.players.length <= 1) {
+    broadcast(room, {
+      type: "gameAbort",
+      reason: "notEnoughPlayers"
+    });
+    delete rooms[room.roomId];
+    return false;
+  }
+  return true;
+}
+
 function ensureHost(room) {
-  if (!room.players.some(p => p.isHost) && room.players.length > 0) {
+  room.players.forEach(p => p.isHost = false);
+  if (room.players.length > 0) {
     room.players[0].isHost = true;
   }
 }
@@ -84,19 +97,7 @@ wss.on("connection", ws => {
 if (data.type === "join") {
   const roomId = data.roomId;
   const clientId = data.id;
-  const isHost = data.isHost === true;
 
-  // ルームが無い & ホストじゃない → 失敗
-  if (!rooms[roomId] && !isHost) {
-    send(ws, {
-      type: "joinResult",
-      success: false,
-      reason: "room_not_found"
-    });
-    return;
-  }
-
-  // ホストなら作成
   if (!rooms[roomId]) {
     rooms[roomId] = {
       roomId,
@@ -105,7 +106,7 @@ if (data.type === "join") {
       players: [],
       spectators: [],
       phase: "waiting",
-      selectedChars: {} 
+      selectedChars: {}
     };
   }
 
@@ -114,27 +115,15 @@ if (data.type === "join") {
   ws.id = clientId;
   ws.roomId = roomId;
 
-  // ===== プレイヤー or 観戦 判定 =====
   if (room.players.length < room.maxPlayers && room.phase === "waiting") {
-    // プレイヤーとして参加
     room.players.push({
       id: ws.id,
       name: data.name || "NoName",
       ws,
       ready: false,
-      isHost: room.players.length === 0
+      isHost: room.players.length === 0 // ★ 最初の1人がホスト
     });
   } else {
-    // 満員処理
-   if (room.spectators.length >= room.maxSpectators) {
-    send(ws, {
-      type: "joinResult",
-      success: false,
-      reason: "spectator_full"
-    });
-    return;
-   }
-    // 観戦として参加
     room.spectators.push({
       id: ws.id,
       name: data.name || "NoName",
@@ -142,12 +131,7 @@ if (data.type === "join") {
     });
   }
 
-  // 成功通知（観戦でも success=true）
-  send(ws, {
-    type: "joinResult",
-    success: true
-  });
-
+  send(ws, { type: "joinResult", success: true });
   broadcast(room, roomInfo(room));
 }
 
@@ -271,10 +255,7 @@ if (data.type === "changeRole") {
     room.players = room.players.filter(p => p.id !== ws.id);
     room.spectators = room.spectators.filter(s => s.id !== ws.id);
 
-    if (room.players.length === 0 && room.spectators.length === 0) {
-      delete rooms[ws.roomId];
-      return;
-    }
+    if (!checkRoomAlive(room)) return;
 
     ensureHost(room);
     broadcast(room, roomInfo(room));
