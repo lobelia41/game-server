@@ -104,6 +104,7 @@ if (data.type === "join") {
       players: [],
       spectators: [],
       phase: "waiting"
+      selectedChars: {} 
     };
   }
 
@@ -194,6 +195,23 @@ if (data.type === "requestRoomInfo") {
   if (!room) return;
 
   send(ws, roomInfo(room));
+}
+
+if (data.type === "selectChar") {
+  const room = rooms[ws.roomId];
+  if (!room) return;
+
+  room.selectedChars[ws.id] = data.charId;
+
+  // 全員分そろった？
+  if (Object.keys(room.selectedChars).length === room.players.length) {
+    broadcast(room, {
+      type: "charResult",
+      results: Object.entries(room.selectedChars).map(
+        ([playerId, charId]) => ({ playerId, charId })
+      )
+    });
+  }
 }
     
     // ===== 役割変更 =====
