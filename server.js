@@ -65,7 +65,7 @@ function onPlayerDisconnected(room, disconnectedId) {
         room.hostId = newHost.id;
     }
 
-    broadcastRoomInfo(room);
+    broadcast(room, roomInfo(room));
 }
 
 wss.on("connection", ws => {
@@ -99,6 +99,7 @@ if (data.type === "join") {
   // ホストなら作成
   if (!rooms[roomId]) {
     rooms[roomId] = {
+      roomId,
       maxPlayers: 4,
       maxSpectators: 1,
       players: [],
