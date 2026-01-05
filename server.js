@@ -44,6 +44,30 @@ function ensureHost(room) {
   }
 }
 
+function onPlayerDisconnected(room, disconnectedId) {
+    // プレイヤーから削除
+    room.players = room.players.filter(p => p.id !== disconnectedId);
+
+    // 人数チェック
+    if (room.players.length <= 1) {
+        broadcast(room, {
+            type: "gameAbort",
+            reason: "notEnoughPlayers"
+        });
+        destroyRoom(room);
+        return;
+    }
+
+    // ホスト切断なら権限移譲
+    if (room.hostId === disconnectedId) {
+        const newHost = room.players[0];
+        newHost.isHost = true;
+        room.hostId = newHost.id;
+    }
+
+    broadcastRoomInfo(room);
+}
+
 wss.on("connection", ws => {
   ws.id = null;
   ws.roomId = null;
