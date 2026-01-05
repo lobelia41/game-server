@@ -197,6 +197,25 @@ if (data.type === "requestRoomInfo") {
 
   send(ws, roomInfo(room));
 }
+    
+if (data.type === "finalizeChars") {
+  const room = rooms[ws.roomId];
+  if (!room) return;
+
+  // 未選択をランダム補完
+  room.players.forEach(p => {
+    if (!room.selectedChars[p.id]) {
+      room.selectedChars[p.id] = Math.floor(Math.random() * 12) + 1;
+    }
+  });
+
+  broadcast(room, {
+    type: "charResult",
+    results: Object.entries(room.selectedChars).map(
+      ([playerId, charId]) => ({ playerId, charId })
+    )
+  });
+}
 
 if (data.type === "selectChar") {
   const room = rooms[ws.roomId];
