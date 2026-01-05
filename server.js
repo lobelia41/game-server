@@ -54,7 +54,7 @@ function onPlayerDisconnected(room, disconnectedId) {
             type: "gameAbort",
             reason: "notEnoughPlayers"
         });
-        destroyRoom(room);
+        delete rooms[room.roomId];
         return;
     }
 
