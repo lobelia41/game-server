@@ -185,6 +185,7 @@ if (data.type === "leave") {
         room.players.length >= 2 &&
         room.players.every(p => p.ready || p.isHost)
       ) {
+        room.selectedChars = {};
         room.phase = "playing";
         broadcast(room, { type: "gameStart" });
       }
