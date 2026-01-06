@@ -38,29 +38,18 @@ function roomInfo(room) {
   };
 }
 
-function checkRoomAlive(room) {
-  if (room.players.length <= 1) {
-    broadcast(room, {
-      type: "gameAbort",
-      reason: "notEnoughPlayers"
-    });
-    delete rooms[room.roomId];
-    return false;
-  }
-  return true;
-}
-
 function ensureHost(room) {
-  room.players.forEach(p => p.isHost = false);
+  room.players.forEach(p => (p.isHost = false));
   if (room.players.length > 0) {
     room.players[0].isHost = true;
   }
 }
 
 function findRoomByWs(ws) {
-  return Object.values(rooms).find(room =>
-    room.players.some(p => p.ws === ws) ||
-    room.spectators.some(s => s.ws === ws)
+  return Object.values(rooms).find(
+    room =>
+      room.players.some(p => p.ws === ws) ||
+      room.spectators.some(s => s.ws === ws)
   );
 }
 
@@ -68,7 +57,7 @@ wss.on("connection", ws => {
   ws.id = null;
   ws.roomId = null;
 
-    ws.on("close", () => {
+  ws.on("close", () => {
     const room = findRoomByWs(ws);
     if (!room) return;
 
@@ -77,7 +66,11 @@ wss.on("connection", ws => {
     room.players = room.players.filter(p => p.ws !== ws);
     room.spectators = room.spectators.filter(s => s.ws !== ws);
 
-    if (!checkRoomAlive(room)) return;
+    // プレイヤー0になったら削除
+    if (room.players.length === 0) {
+      delete rooms[room.roomId];
+      return;
+    }
 
     if (wasHost) {
       ensureHost(room);
@@ -86,6 +79,8 @@ wss.on("connection", ws => {
         hostId: room.players[0].id
       });
     }
+
+    broadcast(room, roomInfo(room));
   });
 
   ws.on("message", msg => {
@@ -95,59 +90,53 @@ wss.on("connection", ws => {
     } catch {
       return;
     }
+
     // ===== ルーム作成 or 参加 =====
-if (data.type === "join") {
-  const roomId = data.roomId;
-  const clientId = data.id;
+    if (data.type === "join") {
+      const roomId = data.roomId;
+      const clientId = data.id;
 
-  if (!rooms[roomId]) {
-    rooms[roomId] = {
-      roomId,
-      maxPlayers: 4,
-      maxSpectators: 1,
-      players: [],
-      spectators: [],
-      phase: "waiting",
-      selectedChars: {}
-    };
-  }
+      if (!rooms[roomId]) {
+        rooms[roomId] = {
+          roomId,
+          maxPlayers: 4,
+          maxSpectators: 1,
+          players: [],
+          spectators: [],
+          phase: "waiting",
+          selectedChars: {}
+        };
+      }
 
-  const room = rooms[roomId];
+      const room = rooms[roomId];
 
-  ws.id = clientId;
-  ws.roomId = roomId;
-  
-const isPlayer = room.players.length < room.maxPlayers && room.phase === "waiting";
-if (isPlayer) {
-  room.players.push({
-    id: ws.id,
-    name: data.name || "NoName",
-    ws,
-    ready: false,
-    isHost: room.players.length === 0
-  });
-} else {
-  room.spectators.push({
-    id: ws.id,
-    name: data.name || "NoName",
-    ws
-  });
-}
+      ws.id = clientId;
+      ws.roomId = roomId;
 
-  send(ws, { type: "joinResult", success: true });
-  broadcast(room, roomInfo(room));
-}
+      const isPlayer =
+        room.players.length < room.maxPlayers && room.phase === "waiting";
+      if (isPlayer) {
+        room.players.push({
+          id: ws.id,
+          name: data.name || "NoName",
+          ws,
+          ready: false,
+          isHost: room.players.length === 0
+        });
+      } else {
+        room.spectators.push({
+          id: ws.id,
+          name: data.name || "NoName",
+          ws
+        });
+      }
 
-if (data.type === "leave") {
-  const room = rooms[ws.roomId];
-  if (!room) return;
+      // 自分に joinResult
+      send(ws, { type: "joinResult", success: true });
 
-  room.players = room.players.filter(p => p.id !== ws.id);
-  room.spectators = room.spectators.filter(s => s.id !== ws.id);
-
-  ensureHost(room);
-  broadcast(room, roomInfo(room));
-}
+      // ルーム情報を全員に通知
+      broadcast(room, roomInfo(room));
+    }
 
     // ===== 準備完了 =====
     if (data.type === "ready") {
@@ -179,77 +168,75 @@ if (data.type === "leave") {
       }
     }
 
-if (data.type === "requestRoomInfo") {
-  const room = rooms[ws.roomId];
-  if (!room) return;
-
-  send(ws, roomInfo(room));
-}
-    
-if (data.type === "finalizeChars") {
-  const room = rooms[ws.roomId];
-  if (!room) return;
-
-  // 未選択をランダム補完
-  room.players.forEach(p => {
-    if (!room.selectedChars[p.id]) {
-      room.selectedChars[p.id] = Math.floor(Math.random() * 12) + 1;
+    // ===== ルーム情報要求 =====
+    if (data.type === "requestRoomInfo") {
+      const room = rooms[ws.roomId];
+      if (!room) return;
+      send(ws, roomInfo(room));
     }
-  });
 
-  broadcast(room, {
-    type: "charResult",
-    results: Object.entries(room.selectedChars).map(
-      ([playerId, charId]) => ({ playerId, charId })
-    )
-  });
-}
+    // ===== キャラクター最終決定（ホストのみ）=====
+    if (data.type === "finalizeChars") {
+      const room = rooms[ws.roomId];
+      if (!room) return;
 
-if (data.type === "selectChar") {
-  const room = rooms[ws.roomId];
-  if (!room) return;
-
-  room.selectedChars[ws.id] = data.charId;
-}
-    
-    // ===== 役割変更 =====
-if (data.type === "changeRole") {
-  const room = rooms[ws.roomId];
-  if (!room || room.phase !== "waiting") return;
-
-  // 今の情報を取得
-  let user =
-    room.players.find(p => p.id === ws.id) ||
-    room.spectators.find(s => s.id === ws.id);
-
-  if (!user) return;
-
-  const name = user.name;
-
-  // 削除
-  room.players = room.players.filter(p => p.id !== ws.id);
-  room.spectators = room.spectators.filter(s => s.id !== ws.id);
-
-  if (data.to === "player") {
-    if (room.players.length < room.maxPlayers) {
-      room.players.push({
-        id: ws.id,
-        name,
-        ws,
-        ready: false,
-        isHost: false
+      room.players.forEach(p => {
+        if (!room.selectedChars[p.id]) {
+          room.selectedChars[p.id] = Math.floor(Math.random() * 12) + 1;
+        }
       });
-    } else {
-      room.spectators.push({ id: ws.id, name, ws });
-    }
-  } else {
-    room.spectators.push({ id: ws.id, name, ws });
-  }
 
-  ensureHost(room);
-  broadcast(room, roomInfo(room));
-}
+      broadcast(room, {
+        type: "charResult",
+        results: Object.entries(room.selectedChars).map(
+          ([playerId, charId]) => ({ playerId, charId })
+        )
+      });
+    }
+
+    // ===== キャラクター選択 =====
+    if (data.type === "selectChar") {
+      const room = rooms[ws.roomId];
+      if (!room) return;
+      room.selectedChars[ws.id] = data.charId;
+    }
+
+    // ===== 役割変更 =====
+    if (data.type === "changeRole") {
+      const room = rooms[ws.roomId];
+      if (!room || room.phase !== "waiting") return;
+
+      let user =
+        room.players.find(p => p.id === ws.id) ||
+        room.spectators.find(s => s.id === ws.id);
+      if (!user) return;
+
+      const name = user.name;
+
+      // 削除
+      room.players = room.players.filter(p => p.id !== ws.id);
+      room.spectators = room.spectators.filter(s => s.id !== ws.id);
+
+      if (data.to === "player") {
+        if (room.players.length < room.maxPlayers) {
+          room.players.push({
+            id: ws.id,
+            name,
+            ws,
+            ready: false,
+            isHost: false
+          });
+        } else {
+          room.spectators.push({ id: ws.id, name, ws });
+        }
+      } else {
+        room.spectators.push({ id: ws.id, name, ws });
+      }
+
+      ensureHost(room);
+      broadcast(room, roomInfo(room));
+    }
   });
-  });
+});
 
 console.log("WebSocket server started on port " + PORT);
