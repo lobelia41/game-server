@@ -57,30 +57,6 @@ function ensureHost(room) {
   }
 }
 
-function onPlayerDisconnected(room, disconnectedId) {
-    // プレイヤーから削除
-    room.players = room.players.filter(p => p.id !== disconnectedId);
-
-    // 人数チェック
-    if (room.players.length <= 1) {
-        broadcast(room, {
-            type: "gameAbort",
-            reason: "notEnoughPlayers"
-        });
-        delete rooms[room.roomId];
-        return;
-    }
-
-    // ホスト切断なら権限移譲
-    if (room.hostId === disconnectedId) {
-        const newHost = room.players[0];
-        newHost.isHost = true;
-        room.hostId = newHost.id;
-    }
-
-    broadcast(room, roomInfo(room));
-}
-
 wss.on("connection", ws => {
   ws.id = null;
   ws.roomId = null;
@@ -247,19 +223,24 @@ if (data.type === "changeRole") {
   broadcast(room, roomInfo(room));
 }
   });
+ws.on("close", () => {
+  const room = findRoomByWs(ws);
+  if (!room) return;
 
-  ws.on("close", () => {
-    const room = rooms[ws.roomId];
-    if (!room) return;
+  const wasHost = room.players.find(p => p.ws === ws)?.isHost;
 
-    room.players = room.players.filter(p => p.id !== ws.id);
-    room.spectators = room.spectators.filter(s => s.id !== ws.id);
+  room.players = room.players.filter(p => p.ws !== ws);
 
-    if (!checkRoomAlive(room)) return;
+  if (!checkRoomAlive(room))
+    return;
 
+  if (wasHost) {
     ensureHost(room);
-    broadcast(room, roomInfo(room));
-  });
+    broadcast(room, {
+      type: "hostChanged",
+      hostId: room.players[0].id
+    });
+  }
 });
 
 console.log("WebSocket server started on port " + PORT);
