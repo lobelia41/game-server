@@ -116,22 +116,23 @@ if (data.type === "join") {
 
   ws.id = clientId;
   ws.roomId = roomId;
-
-  if (room.players.length < room.maxPlayers && room.phase === "waiting") {
-    room.players.push({
-      id: ws.id,
-      name: data.name || "NoName",
-      ws,
-      ready: false,
-      isHost: room.players.length === 0 // ★ 最初の1人がホスト
-    });
-  } else {
-    room.spectators.push({
-      id: ws.id,
-      name: data.name || "NoName",
-      ws
-    });
-  }
+  
+const isPlayer = room.players.length < room.maxPlayers && room.phase === "waiting";
+if (isPlayer) {
+  room.players.push({
+    id: ws.id,
+    name: data.name || "NoName",
+    ws,
+    ready: false,
+    isHost: room.players.length === 0
+  });
+} else {
+  room.spectators.push({
+    id: ws.id,
+    name: data.name || "NoName",
+    ws
+  });
+}
 
   send(ws, { type: "joinResult", success: true });
   broadcast(room, roomInfo(room));
