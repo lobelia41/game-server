@@ -57,9 +57,36 @@ function ensureHost(room) {
   }
 }
 
+function findRoomByWs(ws) {
+  return Object.values(rooms).find(room =>
+    room.players.some(p => p.ws === ws) ||
+    room.spectators.some(s => s.ws === ws)
+  );
+}
+
 wss.on("connection", ws => {
   ws.id = null;
   ws.roomId = null;
+
+    ws.on("close", () => {
+    const room = findRoomByWs(ws);
+    if (!room) return;
+
+    const wasHost = room.players.find(p => p.ws === ws)?.isHost;
+
+    room.players = room.players.filter(p => p.ws !== ws);
+    room.spectators = room.spectators.filter(s => s.ws !== ws);
+
+    if (!checkRoomAlive(room)) return;
+
+    if (wasHost) {
+      ensureHost(room);
+      broadcast(room, {
+        type: "hostChanged",
+        hostId: room.players[0].id
+      });
+    }
+  });
 
   ws.on("message", msg => {
     let data;
@@ -68,7 +95,6 @@ wss.on("connection", ws => {
     } catch {
       return;
     }
-
     // ===== ルーム作成 or 参加 =====
 if (data.type === "join") {
   const roomId = data.roomId;
@@ -223,24 +249,5 @@ if (data.type === "changeRole") {
   broadcast(room, roomInfo(room));
 }
   });
-ws.on("close", () => {
-  const room = findRoomByWs(ws);
-  if (!room) return;
-
-  const wasHost = room.players.find(p => p.ws === ws)?.isHost;
-
-  room.players = room.players.filter(p => p.ws !== ws);
-
-  if (!checkRoomAlive(room))
-    return;
-
-  if (wasHost) {
-    ensureHost(room);
-    broadcast(room, {
-      type: "hostChanged",
-      hostId: room.players[0].id
-    });
-  }
-});
 
 console.log("WebSocket server started on port " + PORT);
