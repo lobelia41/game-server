@@ -249,5 +249,6 @@ if (data.type === "changeRole") {
   broadcast(room, roomInfo(room));
 }
   });
+  });
 
 console.log("WebSocket server started on port " + PORT);
