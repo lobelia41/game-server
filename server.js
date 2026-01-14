@@ -1,7 +1,14 @@
+const http = require("http");
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 3000;
-const wss = new WebSocket.Server({ port: PORT });
+
+const server = http.createServer();
+const wss = new WebSocket.Server({ server });
+
+server.listen(PORT, () => {
+  console.log("WebSocket server started on port " + PORT);
+});
 
 const rooms = {}; // roomId -> room
 
