@@ -60,6 +60,28 @@ function findRoomByWs(ws) {
   );
 }
 
+function finalizeCharacters(room) {
+  // すでに確定済みなら何もしない
+  if (room.phase === "battle") return;
+
+  console.log("finalizeCharacters");
+
+  room.players.forEach(p => {
+    if (!room.selectedChars.hasOwnProperty(p.id)) {
+      room.selectedChars[p.id] = Math.floor(Math.random() * 12) + 1;
+    }
+  });
+
+  room.phase = "battle";
+
+  broadcast(room, {
+    type: "charResult",
+    results: Object.entries(room.selectedChars).map(
+      ([playerId, charId]) => ({ playerId, charId })
+    )
+  });
+}
+
 wss.on("connection", ws => {
   ws.id = null;
   ws.roomId = null;
@@ -111,7 +133,8 @@ wss.on("connection", ws => {
           players: [],
           spectators: [],
           phase: "waiting",
-          selectedChars: {}
+          selectedChars: {},
+          charFinalizeTimer: null
         };
       }
 
@@ -171,6 +194,12 @@ wss.on("connection", ws => {
       ) {
         room.selectedChars = {};
         room.phase = "playing";
+
+        // ★30秒後に強制確定
+        room.charFinalizeTimer = setTimeout(() => {
+        finalizeCharacters(room);
+        }, 30000);
+        
         broadcast(room, { type: "gameStart" });
       }
     }
@@ -182,31 +211,31 @@ wss.on("connection", ws => {
       send(ws, roomInfo(room));
     }
 
-    // ===== キャラクター最終決定（ホストのみ）=====
-    if (data.type === "finalizeChars") {
-      const room = rooms[ws.roomId];
-      if (!room) return;
-
-      room.players.forEach(p => {
-        if (!room.selectedChars[p.id]) {
-          room.selectedChars[p.id] = Math.floor(Math.random() * 12) + 1;
-        }
-      });
-
-      broadcast(room, {
-        type: "charResult",
-        results: Object.entries(room.selectedChars).map(
-          ([playerId, charId]) => ({ playerId, charId })
-        )
-      });
-    }
-
     // ===== キャラクター選択 =====
-    if (data.type === "selectChar") {
-      const room = rooms[ws.roomId];
-      if (!room) return;
-      room.selectedChars[ws.id] = data.charId;
-    }
+if (data.type === "selectChar") {
+  const room = rooms[ws.roomId];
+  if (!room || room.phase !== "playing") return;
+
+  const isPlayer = room.players.some(p => p.id === ws.id);
+  if (!isPlayer) return;
+
+  if (room.selectedChars.hasOwnProperty(ws.id)) return;
+
+  room.selectedChars[ws.id] = data.charId;
+
+  const allDecided = room.players.every(p =>
+    room.selectedChars.hasOwnProperty(p.id)
+  );
+
+  if (!allDecided) return;
+
+  if (room.charFinalizeTimer) {
+    clearTimeout(room.charFinalizeTimer);
+    room.charFinalizeTimer = null;
+  }
+
+  finalizeCharacters(room);
+}
 
     // ===== 役割変更 =====
     if (data.type === "changeRole") {
